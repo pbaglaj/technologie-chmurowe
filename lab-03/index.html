@@ -1,1 +1,23 @@
-<html><body><h1>Full-Stack App</h1><div id='api-result'></div></body></html>
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Docker</title>
+</head>
+<body>
+    <h1>Full-Stack App</h1>
+    <div id="api-result">Ładowanie danych...</div>
+
+    <script>
+        fetch('/api/items')
+            .then(response => response.json())
+            .then(data => {
+                const resultDiv = document.getElementById('api-result');
+                resultDiv.innerText = JSON.stringify(data.items, null, 2);
+            })
+            .catch(error => {
+                document.getElementById('api-result').innerText = 'Błąd: ' + error;
+            });
+    </script>
+</body>
+</html>
