@@ -1,0 +1,22 @@
+services:
+  backend:
+    image: localhost:5000/dashboard-backend:latest
+    container_name: dashboard-backend
+    restart: always
+    networks:
+      - app-network
+
+  frontend:
+    image: localhost:5000/dashboard-frontend:latest
+    container_name: dashboard-frontend
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
