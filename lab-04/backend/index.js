@@ -1,30 +1,24 @@
 const express = require('express');
 const os = require('os');
-const cors = require('cors');
-
 const app = express();
+
 app.use(express.json());
-app.use(cors());
 
-let items = [{ id: 1, name: 'Produkt A' }];
+const items = [];
 
-app.get('/items', (req, res) => {
-  res.json(items);
-});
+app.get('/items', (req, res) => res.json(items));
 
 app.post('/items', (req, res) => {
-  const newItem = { id: Date.now(), name: req.body.name };
-  items.push(newItem);
-  res.status(201).json(newItem);
+    const { name } = req.body;
+    if (name) items.push({ id: Date.now(), name });
+    res.status(201).json({ success: true });
 });
 
 app.get('/stats', (req, res) => {
-  res.json({
-    count: items.length,
-    instanceId: process.env.INSTANCE_ID || os.hostname()
-  });
+    res.json({
+        count: items.length,
+        instanceId: os.hostname()
+    });
 });
 
-app.listen(3000, () => {
-  console.log('Backend listening on port 3000');
-});
+app.listen(3000, () => console.log('Backend działa na porcie 3000'));
