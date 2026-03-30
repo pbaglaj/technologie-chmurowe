@@ -46,6 +46,9 @@ const Stats = () => {
       <h2>Statystyki</h2>
       <p>Liczba produktów: {stats.count ?? '...'}</p>
       <p>Obsłużone przez instancję: {stats.instanceId ?? '...'}</p>
+      <p>Czas pracy serwera (uptime): {stats.uptime !== undefined ? `${stats.uptime} s` : '...'}</p>
+      <p>Całkowita liczba żądań: {stats.totalRequests ?? '...'}</p>
+      <p>Aktualny czas serwera: {stats.currentTime ?? '...'}</p>
     </div>
   );
 };
