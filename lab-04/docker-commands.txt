@@ -53,3 +53,35 @@ curl http://localhost:8080/api/items
 
 Test 3: Weryfikacja Cacheowania na ścieżce /api/stats
 curl -i http://localhost:8080/api/stats
+
+Cześć 2:
+docker build -t localhost:5000/dashboard-backend:latest ./backend
+
+# Zbudowanie obrazu z tagiem v2
+docker build -t localhost:5000/dashboard-frontend:v2 ./frontend
+
+# Wypchnięcie nowej wersji do lokalnego rejestru
+docker push localhost:5000/dashboard-frontend:v2
+
+# 1. Zatrzymanie i usunięcie starych kontenerów (jeśli działają)
+docker rm -f frontend api-a api-b 2>/dev/null
+
+# 2. Uruchomienie instancji A z parametrem INSTANCE_ID
+docker run -d --name api-a \
+  --network dashboard-net \
+  -e INSTANCE_ID="Backend-Node-A" \
+  localhost:5000/dashboard-backend:latest
+
+# 3. Uruchomienie instancji B z parametrem INSTANCE_ID
+docker run -d --name api-b \
+  --network dashboard-net \
+  -e INSTANCE_ID="Backend-Node-B" \
+  localhost:5000/dashboard-backend:latest
+
+# 4. Uruchomienie zaktualizowanego frontendu (v2)
+docker run -d --name frontend \
+  --network dashboard-net \
+  -p 8080:80 \
+  localhost:5000/dashboard-frontend:v2
+
+curl -i http://localhost:8080/api/stats

@@ -17,7 +17,7 @@ app.post('/items', (req, res) => {
 app.get('/stats', (req, res) => {
     res.json({
         count: items.length,
-        instanceId: os.hostname()
+        instanceId: process.env.INSTANCE_ID || os.hostname() 
     });
 });
 
