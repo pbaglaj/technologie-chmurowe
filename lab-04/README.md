@@ -229,3 +229,41 @@ docker run -d --name frontend \
 curl http://localhost:8080/api/health
 curl http://localhost:8080/api/stats
 ```
+
+## Lab 05 - Część 2
+
+### Ustawienie zmiennych powłoki
+```bash
+export BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+export VERSION=v4
+```
+
+### BUDOWANIE BACKENDU (uruchomi automatycznie etap `test`)
+```bash
+cd backend
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --build-arg BUILD_DATE=$BUILD_DATE \
+  --build-arg VERSION=$VERSION \
+  --build-arg NODE_ENV=production \
+  -t localhost:5000/dashboard-backend:$VERSION \
+  --push .
+```
+
+### BUDOWANIE FRONTENDU
+```bash
+cd ../frontend
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --build-arg BUILD_DATE=$BUILD_DATE \
+  --build-arg VERSION=$VERSION \
+  --build-arg NODE_ENV=production \
+  -t localhost:5000/dashboard-frontend:$VERSION \
+  --push .
+```
+
+### 6. Weryfikacja: Etykiety OCI i skuteczność .dockerignore
+```bash
+docker pull localhost:5000/dashboard-backend:v4
+docker inspect localhost:5000/dashboard-backend:v4 --format '{{range $k, $v := .Config.Labels}}{{println $k ":" $v}}{{end}}'
+```

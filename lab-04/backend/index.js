@@ -8,7 +8,6 @@ const items = [];
 const startTime = Date.now();
 let totalRequests = 0;
 
-// Middleware do zliczania obsłużonych żądań
 app.use((req, res, next) => {
     totalRequests++;
     next();
@@ -39,4 +38,8 @@ app.get('/stats', (req, res) => {
     });
 });
 
-app.listen(3000, () => console.log('Backend działa na porcie 3000'));
+if (require.main === module) {
+    app.listen(3000, () => console.log('Backend działa na porcie 3000'));
+}
+
+module.exports = app;

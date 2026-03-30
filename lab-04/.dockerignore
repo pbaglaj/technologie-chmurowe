@@ -1,0 +1,19 @@
+# Logi
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Zależności instalowane lokalnie
+node_modules/
+
+# Zmienne środowiskowe (często zawierają sekrety lokalne!)
+.env
+.env.local
+
+# Inne wykluczenia (np. foldery gita, pliki raportów z testów)
+.git/
+coverage/
+
+# Uwaga: Zgodnie z wymaganiem można tu dodać `__tests__/` lub `*.test.js`, 
+# ale wtedy Dockerfile z etapem testowym (który uruchamia 'npm test') zakończy się błędem!
+# Do celów zadania, zostawiamy kod testów widoczny, a usuwamy go w etapie produkcji.
