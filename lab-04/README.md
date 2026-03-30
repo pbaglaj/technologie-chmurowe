@@ -1,71 +1,128 @@
+## Lab 04 - Część 1
+
+### 1) Uruchom lokalny rejestr
+
+```bash
 docker run -d \
   -p 5000:5000 \
   --restart=always \
   --name lokalny-rejestr \
   registry:2
+```
 
-# Backend
+### 2) Zbuduj i otaguj obrazy
+
+#### Backend
+
+```bash
 docker build -t localhost:5000/dashboard-backend:v1 ./backend
 docker tag localhost:5000/dashboard-backend:v1 localhost:5000/dashboard-backend:latest
+```
 
-# Frontend
+#### Frontend
+
+```bash
 docker build -t localhost:5000/dashboard-frontend:v1 ./frontend
 docker tag localhost:5000/dashboard-frontend:v1 localhost:5000/dashboard-frontend:latest
+```
 
+### 3) Wypchnij obrazy do lokalnego rejestru
+
+```bash
 docker push localhost:5000/dashboard-backend:v1
 docker push localhost:5000/dashboard-backend:latest
 
 docker push localhost:5000/dashboard-frontend:v1
 docker push localhost:5000/dashboard-frontend:latest
+```
 
+### 4) (Opcjonalnie) Usuń lokalne obrazy
+
+```bash
 docker rmi localhost:5000/dashboard-frontend:latest localhost:5000/dashboard-frontend:v1
 docker rmi localhost:5000/dashboard-backend:latest localhost:5000/dashboard-backend:v1
+```
 
-# 1. Pobranie obrazów
+### 5) Pobierz obrazy i uruchom środowisko
+
+#### Pobranie obrazów
+
+```bash
 docker pull localhost:5000/dashboard-backend:latest
 docker pull localhost:5000/dashboard-frontend:latest
+```
 
-# 2. Utworzenie wewnętrznej sieci izolowanej
+#### Utworzenie sieci
+
+```bash
 docker network create dashboard-net
+```
 
-# 3. Uruchomienie backendu w sieci wewnętrznej (BEZ publikacji portów na hosta)
+#### Uruchom backend (bez publikacji portu)
+
+```bash
 docker run -d --name backend \
   --network dashboard-net \
   localhost:5000/dashboard-backend:latest
+```
 
-# 4. Uruchomienie frontendu/Nginx, który pełni też rolę Reverse Proxy
+#### Uruchom frontend (Nginx + reverse proxy)
+
+```bash
 docker run -d --name frontend \
   --network dashboard-net \
   -p 8080:80 \
   localhost:5000/dashboard-frontend:latest
+```
 
-Test 1: Frontend SPA – widok główny i React Router (/, /products, /stats)
+### 6) Testy
+
+#### Test 1: SPA i React Router (`/`, `/products`, `/stats`)
+
+```bash
 curl -I http://localhost:8080/
 curl -I http://localhost:8080/products
 curl -I http://localhost:8080/stats
+```
 
-Test 2: Weryfikacja działania endpointów API przez Proxy Nginx
+#### Test 2: API przez proxy Nginx
+
+```bash
 curl -X POST http://localhost:8080/api/items -H "Content-Type: application/json" -d '{"name": "Laptop DevOps"}'
 # Oczekiwany wynik: {"success":true}
 
 curl http://localhost:8080/api/items
 # Oczekiwany wynik: [{"id":1681234567890,"name":"Laptop DevOps"}]
+```
 
-Test 3: Weryfikacja Cacheowania na ścieżce /api/stats
+#### Test 3: cache na ścieżce `/api/stats`
+
+```bash
 curl -i http://localhost:8080/api/stats
+```
 
-=================================================================================
-Cześć 2
-=================================================================================
+---
 
+## Lab 04 - Część 2
+
+### 1) Zbuduj nowe obrazy
+
+```bash
 docker build -t localhost:5000/dashboard-backend:latest ./backend
 
 # Zbudowanie obrazu z tagiem v2
 docker build -t localhost:5000/dashboard-frontend:v2 ./frontend
+```
 
-# Wypchnięcie nowej wersji do lokalnego rejestru
+### 2) Wypchnij nową wersję frontendu
+
+```bash
 docker push localhost:5000/dashboard-frontend:v2
+```
 
+### 3) Uruchom dwa backendy i frontend v2
+
+```bash
 # 1. Zatrzymanie i usunięcie starych kontenerów (jeśli działają)
 docker rm -f frontend api-a api-b 2>/dev/null
 
@@ -86,46 +143,70 @@ docker run -d --name frontend \
   --network dashboard-net \
   -p 8080:80 \
   localhost:5000/dashboard-frontend:v2
+```
 
+### 4) Test
+
+```bash
 curl -i http://localhost:8080/api/stats
+```
 
-=================================================================================
-Lab 05
-=================================================================================
+---
 
+## Lab 05 - Multi-arch (Buildx)
+
+### 1) Uruchom lokalny rejestr
+
+```bash
 docker run -d -p 5000:5000 --restart=always --name lokalny-rejestr registry:2
+```
 
-# 1. Stworzenie dedykowanego buildera z obsługą wielu architektur i jego użycie
+### 2) Utwórz i aktywuj builder multi-arch
+
+```bash
 docker buildx create \
   --name multiarch-builder \
   --driver docker-container \
   --driver-opt network=host \
   --use \
   --bootstrap
+```
 
-# 2. Weryfikacja buildera (sprawdza czy wspiera arm64 i amd64)
+### 3) Zweryfikuj builder
+
+```bash
 docker buildx inspect multiarch-builder
+```
 
-# 3. Budowanie i push obrazu backendu
+### 4) Build i push backendu (`linux/amd64`, `linux/arm64`)
+
+```bash
 cd backend
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
   -t localhost:5000/dashboard-backend:v3 \
   --push .
+```
 
-# 4. Budowanie i push obrazu frontendu
+### 5) Build i push frontendu (`linux/amd64`, `linux/arm64`)
+
+```bash
 cd ../frontend
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
   -t localhost:5000/dashboard-frontend:v3 \
   --push .
+```
 
-Weryfikacja manifestów Docker (docker buildx imagetools)
+### 6) Weryfikacja manifestu obrazu
 
+```bash
 docker buildx imagetools inspect localhost:5000/dashboard-backend:v3
+```
 
-Testowanie środowiska po zmianach
+### 7) Testowanie środowiska po zmianach
 
+```bash
 # Konfiguracja środowiska uruchomieniowego
 docker rm -f api-a api-b frontend 2>/dev/null
 
@@ -146,5 +227,5 @@ docker run -d --name frontend \
   localhost:5000/dashboard-frontend:v3
 
 curl http://localhost:8080/api/health
-
 curl http://localhost:8080/api/stats
+```
