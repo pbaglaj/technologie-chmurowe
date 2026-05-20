@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: notes-prod
+
+resources:
+  - ../../base
+  - ingress.yaml
+  - network-policy.yaml
+  - pdb.yaml
+  - hpa.yaml
+
+labels:
+  - includeSelectors: false
+    pairs:
+      environment: prod
+
+patches:
+  - path: api-deployment-patch.yaml
+    target:
+      kind: Deployment
+      name: api
+  - path: namespace-patch.yaml
+    target:
+      kind: Namespace
+      name: notes
+
+secretGenerator:
+  - name: notes-secret
+    literals:
+      - POSTGRES_USER=notes
+      - POSTGRES_PASSWORD=PLACEHOLDER_REPLACED_BY_CI
+    options:
+      disableNameSuffixHash: true
+
+images:
+  - name: ghcr.io/example/notes-api
+    newName: ghcr.io/example/notes-api
+    newTag: latest
