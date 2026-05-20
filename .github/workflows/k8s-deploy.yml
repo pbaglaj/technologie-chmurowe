@@ -142,6 +142,11 @@ jobs:
             --docker-server=ghcr.io \
             --docker-username="$GHCR_USER" \
             --docker-password="$GHCR_PAT"
+          # ServiceAccount controller creates "default" SA asynchronously - wait for it
+          for i in $(seq 1 30); do
+            if kubectl -n notes-prod get serviceaccount default >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
           kubectl -n notes-prod patch serviceaccount default \
             -p '{"imagePullSecrets":[{"name":"ghcr-creds"}]}'
 
