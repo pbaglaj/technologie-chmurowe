@@ -1,0 +1,194 @@
+name: kubernetes-project CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'kubernetes-project/**'
+      - '.github/workflows/k8s-deploy.yml'
+  pull_request:
+    paths:
+      - 'kubernetes-project/**'
+      - '.github/workflows/k8s-deploy.yml'
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: ${{ github.repository }}/notes-api
+  REGISTRY: ghcr.io
+
+jobs:
+  lint-and-test:
+    name: Lint manifests & smoke-test app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: kubernetes-project
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: kubernetes-project/app/package.json
+
+      - name: Install API deps
+        working-directory: kubernetes-project/app
+        run: npm install --omit=dev --no-audit --no-fund
+
+      - name: Node syntax check
+        working-directory: kubernetes-project/app
+        run: node --check index.js
+
+      - name: Install kustomize
+        run: |
+          curl -sLo kustomize.tgz \
+            https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz
+          tar -xzf kustomize.tgz
+          sudo mv kustomize /usr/local/bin/kustomize
+
+      - name: Kustomize build (dev)
+        run: kustomize build k8s/overlays/dev > /tmp/dev.yaml
+
+      - name: Kustomize build (prod)
+        run: kustomize build k8s/overlays/prod > /tmp/prod.yaml
+
+      - name: kubeconform validation
+        run: |
+          curl -sLo kubeconform.tgz \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar -xzf kubeconform.tgz
+          sudo mv kubeconform /usr/local/bin/kubeconform
+          kubeconform -strict -ignore-missing-schemas -summary /tmp/dev.yaml
+          kubeconform -strict -ignore-missing-schemas -summary /tmp/prod.yaml
+
+  build-and-push:
+    name: Build & push image to GHCR
+    needs: lint-and-test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute image tag
+        id: meta
+        run: |
+          IMAGE="${REGISTRY}/${IMAGE_NAME}"
+          IMAGE="${IMAGE,,}"
+          TAG="sha-${GITHUB_SHA::7}"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: kubernetes-project/app
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.image }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-k3d:
+    name: Deploy to ephemeral k3d cluster
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubectl, kustomize, k3d
+        run: |
+          curl -sLo kubectl https://dl.k8s.io/release/v1.30.3/bin/linux/amd64/kubectl
+          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+          curl -sLo kustomize.tgz \
+            https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz
+          tar -xzf kustomize.tgz && sudo mv kustomize /usr/local/bin/
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG=v5.7.4 bash
+
+      - name: Create k3d cluster
+        run: |
+          k3d cluster create ci --servers 1 --agents 0 \
+            --port "8080:80@loadbalancer" --wait
+          kubectl cluster-info
+          kubectl get nodes -o wide
+
+      - name: Allow cluster to pull from GHCR
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_PAT: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          kubectl create namespace notes-prod
+          kubectl -n notes-prod create secret docker-registry ghcr-creds \
+            --docker-server=ghcr.io \
+            --docker-username="$GHCR_USER" \
+            --docker-password="$GHCR_PAT"
+          kubectl -n notes-prod patch serviceaccount default \
+            -p '{"imagePullSecrets":[{"name":"ghcr-creds"}]}'
+
+      - name: Patch prod overlay with image tag and DB password
+        env:
+          IMAGE: ${{ needs.build-and-push.outputs.image }}
+          TAG: ${{ needs.build-and-push.outputs.tag }}
+        run: |
+          cd kubernetes-project/k8s/overlays/prod
+          kustomize edit set image "ghcr.io/example/notes-api=${IMAGE}:${TAG}"
+          # Inject generated DB password just for this CI deploy
+          PASSWORD="$(openssl rand -hex 24)"
+          sed -i "s|PLACEHOLDER_REPLACED_BY_CI|${PASSWORD}|" kustomization.yaml
+
+      - name: Deploy with Kustomize
+        run: kubectl apply -k kubernetes-project/k8s/overlays/prod
+
+      - name: Wait for rollout
+        run: |
+          kubectl -n notes-prod rollout status statefulset/postgres --timeout=180s
+          kubectl -n notes-prod rollout status deployment/redis --timeout=120s
+          kubectl -n notes-prod wait --for=condition=complete job/notes-migrate --timeout=180s
+          kubectl -n notes-prod rollout status deployment/api --timeout=180s
+
+      - name: Smoke-test via port-forward
+        run: |
+          kubectl -n notes-prod port-forward svc/api 8081:80 >/tmp/pf.log 2>&1 &
+          PF_PID=$!
+          for i in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:8081/health >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8081/health | tee /tmp/health.json
+          curl -sf -X POST -H 'Content-Type: application/json' \
+            -d '{"content":"ci-smoke"}' http://127.0.0.1:8081/api/notes
+          curl -sf http://127.0.0.1:8081/api/notes
+          curl -sf http://127.0.0.1:8081/metrics | head -20
+          kill $PF_PID || true
+
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl -n notes-prod get all
+          kubectl -n notes-prod describe pods
+          kubectl -n notes-prod logs -l app.kubernetes.io/name=api --tail=200 || true
+          kubectl -n notes-prod logs -l app.kubernetes.io/name=notes-migrate --tail=200 || true
+
+      - name: Tear down
+        if: always()
+        run: k3d cluster delete ci || true
