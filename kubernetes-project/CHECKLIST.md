@@ -300,7 +300,7 @@ kubectl -n $NS logs job/notes-migrate
 
 Po każdym mergu do `main` wyjściowy workflow powinien być widoczny tutaj:
 
-> **Link do ostatniego udanego runa:** _<wklej URL z zakładki Actions po pierwszym przebiegu>_
+> **Link do ostatniego udanego runa:** _https://github.com/pbaglaj/technologie-chmurowe/actions/runs/26150792483_
 
 ---
 
