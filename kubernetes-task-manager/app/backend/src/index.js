@@ -16,14 +16,27 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
 });
 
-// Automatyczne tworzenie tabeli po starcie aplikacji
-pool.query(`
-  CREATE TABLE IF NOT EXISTS tasks (
-    id SERIAL PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
-    status VARCHAR(50) DEFAULT 'pending'
-  )
-`).catch(err => console.error('Błąd inicjalizacji bazy:', err));
+// Automatyczne tworzenie tabeli po starcie aplikacji (z retry)
+async function initDb(retries = 10, delay = 3000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS tasks (
+          id SERIAL PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          status VARCHAR(50) DEFAULT 'pending'
+        )
+      `);
+      console.log('Tabela tasks gotowa.');
+      return;
+    } catch (err) {
+      console.error(`Błąd inicjalizacji bazy (próba ${i + 1}/${retries}):`, err.message);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  console.error('Nie udało się zainicjalizować bazy po', retries, 'próbach.');
+}
+initDb();
 
 // GET /health - Sprawdzenie stanu aplikacji i bazy
 app.get('/health', async (req, res) => {
